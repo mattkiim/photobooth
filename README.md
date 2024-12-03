@@ -7,6 +7,7 @@
 6. Open Terminal
 7. Type `cd ~/Downloads/photobooth-main/`
 8. Type `python photobooth_editor_new.py`
+9. Look for photos (easiest if you store in Downloads and sort by date added)
 
 ### Notes
 
