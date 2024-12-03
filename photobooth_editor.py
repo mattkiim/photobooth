@@ -1,136 +1,216 @@
 import ttkbootstrap as ttk
 from tkinter import filedialog
-from tkinter.messagebox import showerror, askyesno
-from tkinter import colorchooser
-from PIL import Image, ImageOps, ImageTk, ImageFilter, ImageGrab
+from tkinter.messagebox import showerror
+from PIL import Image, ImageOps, ImageTk, ImageFilter
+import os
+import threading
 
-#window code
-root = ttk.Window(themename = 'cosmo')
+# Window setup
+root = ttk.Window(themename='cosmo')
 root.title('Photobooth Editor')
-root.geometry("900x800+300+210")
-root.resizable(0, 0)
+root.geometry("1100x1000")
+root.resizable(True, True)
+placeholder = ttk.Label(root, text="Photobooth Editor", font=("Helvetica", 16))
+placeholder.pack(fill="both", expand=True)
 
-#global variables - ** DO NOT MODIFY!**
-WIDTH = 750
-HEIGHT = 560
-file_path = ""
-pen_size = 3
-pen_color = "black"
+# Constants
+WIDTH = 1000
+HEIGHT = 1000
+MAX_IMAGES = 4
+FILTERS = ["None", "Contour", "Black and White", "Blur", "Detail", "Emboss", "Edge Enhance", "Sharpen", "Smooth"]
 
+# Globals
+current_images = []  # List to store selected images
+image_positions = [(177, 256), (177 + 354 + 6, 256), (177, 256 + 236 + 7), (177 + 354 + 6, 256 + 236 + 7)]
+image_widgets = []  # List to store canvas image objects
+current_filters = {}  # Track current filter per image
+filtered_cache = {}  # Cache for filtered images
+background_images = []  # Pre-loaded background images
+current_background_index = 0  # Current background index
+
+# Directory for background images
+BACKGROUND_DIR = "frame_designs/"  # Replace with your directory path
+
+# Left frame for tools
 left_frame = ttk.Frame(root, width=200, height=600)
 left_frame.pack(side="left", fill="y")
 
-canvas = ttk.Canvas(root, width=WIDTH, height=HEIGHT)
+canvas = ttk.Canvas(root, width=WIDTH, height=HEIGHT, bg="white")
 canvas.pack()
-
-filter_label = ttk.Label(left_frame, text="Select Filter:", background="white")
-filter_label.pack(padx=0, pady=2)
-
-image_filters = ["Contour", "Black and White", "Blur", "Detail", "Emboss", "Edge Enhance", "Sharpen", "Smooth"]
-
-filter_combobox = ttk.Combobox(left_frame, values=image_filters, width=15)
-filter_combobox.pack(padx=10, pady=5)\
-
-image_icon = ttk.PhotoImage(file = 'add.png').subsample(12, 12)
-color_icon = ttk.PhotoImage(file = 'color.png').subsample(12, 12)
-save_icon = ttk.PhotoImage(file = 'saved.png').subsample(12, 12)
-
-def open_image():
-    global file_path
-    file_path = filedialog.askopenfilename(title="Open Image File", filetypes=[("Image Files", "*.jpg;*.jpeg;*.png;*.gif;*.bmp")])
-    if file_path:
-        global image, photo_image
-        image = Image.open(file_path)
-        new_width = int((WIDTH / 2))
-        image = image.resize((new_width, HEIGHT), Image.LANCZOS)
-            
-        image = ImageTk.PhotoImage(image)
-        canvas.create_image(0, 0, anchor="nw", image=image)
-
-# function for applying filters to the opened image file
-def apply_filter(filter):
-    global image, photo_image
-        # apply the filter to the original image
-    image = Image.open(file_path)
-    if filter == "Black and White":
-            image = ImageOps.grayscale(image)
-    elif filter == "Blur":
-        image = image.filter(ImageFilter.BLUR)
-    elif filter == "Sharpen":
-        image = image.filter(ImageFilter.SHARPEN)
-    elif filter == "Smooth":
-        image = image.filter(ImageFilter.SMOOTH)
-    elif filter == "Emboss":
-        image = image.filter(ImageFilter.EMBOSS)
-    elif filter == "Detail":
-        image = image.filter(ImageFilter.DETAIL)
-    elif filter == "Edge Enhance":
-        image = image.filter(ImageFilter.EDGE_ENHANCE)
-    elif filter == "Contour":
-        image = image.filter(ImageFilter.CONTOUR)
-
-        new_width = int((WIDTH / 2))
-        rotated_image = rotated_image.resize((new_width, HEIGHT), Image.LANCZOS)
-
-        photo_image = ImageTk.PhotoImage(rotated_image)
-        canvas.create_image(0, 0, anchor="nw", image=photo_image)
-
-filter_combobox.bind("<<ComboboxSelected>>", lambda event: apply_filter(filter_combobox.get()))
-
-# the function for saving an image
-def save_image():
-    global file_path, is_flipped, rotation_angle
-    if file_path:
-        # create a new PIL Image object from the canvas
-        image = ImageGrab.grab(bbox=(canvas.winfo_rootx(), canvas.winfo_rooty(), canvas.winfo_rootx() + canvas.winfo_width(), canvas.winfo_rooty() + canvas.winfo_height()))
-        # check if the image has been flipped or rotated
-        if is_flipped or rotation_angle % 360 != 0:
-            # Resize and rotate the image
-            new_width = int((WIDTH / 2))
-            image = image.resize((new_width, HEIGHT), Image.LANCZOS)
-            if is_flipped:
-                image = image.transpose(Image.FLIP_LEFT_RIGHT)
-            if rotation_angle % 360 != 0:
-                image = image.rotate(rotation_angle)
-            # update the file path to include the modifications in the file name
-            file_path = file_path.split(".")[0] + "_mod.jpg"
-        # apply any filters to the image before saving
-        filter = filter_combobox.get()
-        if filter:
-            if filter == "Black and White":
-                image = ImageOps.grayscale(image)
-            elif filter == "Blur":
-                image = image.filter(ImageFilter.BLUR)
-            elif filter == "Sharpen":
-                image = image.filter(ImageFilter.SHARPEN)
-            elif filter == "Smooth":
-                image = image.filter(ImageFilter.SMOOTH)
-            elif filter == "Emboss":
-                image = image.filter(ImageFilter.EMBOSS)
-            elif filter == "Detail":
-                image = image.filter(ImageFilter.DETAIL)
-            elif filter == "Edge Enhance":
-                image = image.filter(ImageFilter.EDGE_ENHANCE)
-            elif filter == "Contour":
-                image = image.filter(ImageFilter.CONTOUR)
-            # update the file path to include the filter in the file name
-            file_path = file_path.split(".")[0] + "_" + filter.lower().replace(" ", "_") + ".jpg"
-        # open file dialog to select save location and file type
-        file_path = filedialog.asksaveasfilename(defaultextension=".jpg")
-        if file_path:
-            if askyesno(title='Save Image', message='Do you want to save this image?'):
-                # save the image to a file
-                image.save(f"~/Downloads/{file_path}")
+canvas.update_idletasks()
 
 
-image_button = ttk.Button(left_frame, image=image_icon, bootstyle="light", command=open_image)
-image_button.pack(pady=5)
 
-color_button = ttk.Button(left_frame, image=color_icon, bootstyle="light")
-color_button.pack(pady=5)
+def load_background_images():
+    global background_images, BACKGROUND_DIR
+    try:
+        files = [os.path.join(BACKGROUND_DIR, f"{i}.png") for i in range(2, 10)]
+        for file in files:
+            with Image.open(file) as img:
+                img = resize_to_fit(img, WIDTH, HEIGHT)
+                background_images.append(ImageTk.PhotoImage(img))
+    except Exception as e:
+        showerror("Error", f"Error loading background images: {e}")
 
-save_button = ttk.Button(left_frame, image=save_icon, bootstyle="light", command=save_image)
-save_button.pack(pady=5)
+
+
+# Resize background image to fit the canvas while maintaining aspect ratio
+def resize_to_fit(image, target_width, target_height):
+    img_width, img_height = image.size
+    img_aspect = img_width / img_height
+    target_aspect = target_width / target_height
+
+    if img_aspect > target_aspect:
+        new_width = target_width
+        new_height = int(target_width / img_aspect)
+    else:
+        new_height = target_height
+        new_width = int(target_height * img_aspect)
+
+
+    resized_image = image.resize((int(new_width * 0.9), int(new_height * 0.9)), Image.LANCZOS)
+    resized_image = resized_image.rotate(90, expand=True)
+    return resized_image
+
+
+# Display background on canvas
+def display_background():
+    global current_background_index, background_images
+    if not background_images:
+        return
+
+    canvas.delete("background")
+    bg_image = background_images[current_background_index]
+    x_offset = (WIDTH - bg_image.width()) // 2
+    y_offset = (HEIGHT - bg_image.height()) // 2
+    background_id = canvas.create_image(x_offset, y_offset, anchor="nw", image=bg_image, tags="background")
+    canvas.tag_lower(background_id)
+
+
+
+# Cycle background images only if the click is not on an image
+def cycle_background(event=None):
+    print("working")
+    item = canvas.find_withtag("current")
+    if "image_item" in canvas.gettags(item):
+        return  # Don't change the background if clicking on an image
+    global current_background_index
+    if not background_images:
+        return
+    current_background_index = (current_background_index + 1) % len(background_images)
+    display_background()
+
+
+# Open images with threading
+def open_images():
+    threading.Thread(target=_open_images_worker).start()
+
+
+def _open_images_worker():
+    global current_images, current_filters, image_widgets, filtered_cache
+    try:
+        file_paths = filedialog.askopenfilenames(
+            title="Select Up to 4 Images",
+            filetypes=[
+                ("JPG Files", "*.jpg"),
+                ("JPEG Files", "*.jpeg"),
+                ("PNG Files", "*.png"),
+            ]
+        )
+        if len(file_paths) > MAX_IMAGES:
+            showerror("Error", f"Please select up to {MAX_IMAGES} images.")
+            return
+
+        current_images.clear()
+        current_filters.clear()
+        image_widgets.clear()
+        filtered_cache.clear()
+
+        for i, file_path in enumerate(file_paths):
+            img = Image.open(file_path).convert("RGB")
+            img.thumbnail((300, 300), Image.LANCZOS)
+            current_images.append(img)
+            current_filters[i] = 0
+            filtered_cache[i] = {"None": img}
+
+            img_display, x, y = display_image_on_canvas(img, *image_positions[i])
+            image_widget = canvas.create_image(x, y, anchor="nw", image=img_display, tags="image_item")
+            image_widgets.append((image_widget, img_display))
+
+            canvas.tag_bind(image_widget, "<Button-1>", lambda event, idx=i: cycle_filters(idx))
+    except Exception as e:
+        showerror("Error", f"Error opening images: {e}")
+
+
+# Bind background cycling to canvas
+# canvas.bind("<Button-1>", cycle_background)
+
+
+# Handle filter clicks and apply filters
+def handle_filter_click(image_index):
+    threading.Thread(target=cycle_filters, args=(image_index,)).start()
+
+
+# Cycle filters and cache results
+def cycle_filters(image_index):
+    global current_images, current_filters, filtered_cache
+    if image_index >= len(current_images):
+        return
+
+    original_image = current_images[image_index]
+    current_filter_index = current_filters[image_index]
+
+    current_filter_index = (current_filter_index + 1) % len(FILTERS)
+    current_filters[image_index] = current_filter_index
+    filter_name = FILTERS[current_filter_index]
+
+    # Use cache if available
+    if filter_name not in filtered_cache[image_index]:
+        filtered_image = apply_filter(original_image, filter_name)
+        filtered_cache[image_index][filter_name] = filtered_image
+    else:
+        filtered_image = filtered_cache[image_index][filter_name]
+
+    # Update canvas with the new filtered image
+    img_display, x, y = display_image_on_canvas(filtered_image, *image_positions[image_index])
+    canvas.itemconfig(image_widgets[image_index][0], image=img_display)
+    image_widgets[image_index] = (image_widgets[image_index][0], img_display)
+
+
+# Apply filter to an image
+def apply_filter(image, filter_name):
+    filter_map = {
+        "Contour": ImageFilter.CONTOUR,
+        "Blur": ImageFilter.BLUR,
+        "Detail": ImageFilter.DETAIL,
+        "Emboss": ImageFilter.EMBOSS,
+        "Edge Enhance": ImageFilter.EDGE_ENHANCE,
+        "Sharpen": ImageFilter.SHARPEN,
+        "Smooth": ImageFilter.SMOOTH,
+    }
+    if filter_name == "Black and White":
+        return ImageOps.grayscale(image)
+    return image.filter(filter_map.get(filter_name, ImageFilter.CONTOUR))
+
+
+# Helper function to display image
+def display_image_on_canvas(image, x, y):
+    aspect_ratio = image.width / image.height
+    new_height = 236
+    new_width = int(new_height * aspect_ratio)
+    resized_image = image.resize((new_width, new_height), Image.LANCZOS)
+    resized_image = ImageOps.expand(resized_image, border=2, fill="white")
+    return ImageTk.PhotoImage(resized_image), x, y
+
+
+# Load backgrounds and display the first one
+load_background_images()
+display_background()
+
+canvas.bind("<Button-1>", cycle_background)
+
+# Buttons
+open_button = ttk.Button(left_frame, text="Open Images", bootstyle="primary", command=open_images)
+open_button.pack(pady=5)
 
 root.mainloop()
-

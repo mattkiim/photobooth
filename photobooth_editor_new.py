@@ -1,136 +1,167 @@
 import ttkbootstrap as ttk
-from tkinter import filedialog, colorchooser
-from tkinter.messagebox import showerror, askyesno
-from PIL import Image, ImageOps, ImageTk, ImageFilter, ImageGrab
+from tkinter import filedialog
+from tkinter.messagebox import showerror
+from PIL import Image, ImageOps, ImageTk, ImageFilter
+import os
+import threading
 
 # Window setup
 root = ttk.Window(themename='cosmo')
 root.title('Photobooth Editor')
-root.geometry("900x800+300+210")
-root.resizable(0, 0)
+root.geometry("1100x1000")
+root.resizable(True, True)
+placeholder = ttk.Label(root, text="Photobooth Editor", font=("Helvetica", 16))
+placeholder.pack(fill="both", expand=True)
 
 # Constants
-WIDTH = 750
-HEIGHT = 560
-pen_size = 3
-pen_color = "black"
+WIDTH = 1000
+HEIGHT = 1000
+MAX_IMAGES = 4
 
-# Globals for current image
-current_image = None
-display_image = None
+# Globals
+current_images = []  # List to store selected images
+image_positions = [(177, 256), (177 + 354 + 6, 256), (177, 256 + 236 + 7), (177 + 354 + 6, 256 + 236 + 7)]
+image_widgets = []  # List to store canvas image objects
+filtered_cache = {}  # Cache for filtered images
+background_images = []  # Pre-loaded background images
+current_background_index = 0  # Current background index
+
+# Directory for background images
+BACKGROUND_DIR = "frame_designs/"  # Replace with your directory path
 
 # Left frame for tools
 left_frame = ttk.Frame(root, width=200, height=600)
 left_frame.pack(side="left", fill="y")
 
-canvas = ttk.Canvas(root, width=WIDTH, height=HEIGHT)
+canvas = ttk.Canvas(root, width=WIDTH, height=HEIGHT, bg="white")
 canvas.pack()
+canvas.update_idletasks()
 
-# Filter dropdown
-filter_label = ttk.Label(left_frame, text="Select Filter:", background="white")
-filter_label.pack(padx=0, pady=2)
 
-image_filters = ["Contour", "Black and White", "Blur", "Detail", "Emboss", "Edge Enhance", "Sharpen", "Smooth"]
-filter_combobox = ttk.Combobox(left_frame, values=image_filters, width=15)
-filter_combobox.pack(padx=10, pady=5)
 
-# Icons for buttons
-try:
-    image_icon = ttk.PhotoImage(file='add.png').subsample(12, 12)
-    color_icon = ttk.PhotoImage(file='color.png').subsample(12, 12)
-    save_icon = ttk.PhotoImage(file='saved.png').subsample(12, 12)
-except Exception as e:
-    showerror("Error", f"Error loading icons: {e}")
+def load_background_images():
+    global background_images, BACKGROUND_DIR
+    try:
+        files = [os.path.join(BACKGROUND_DIR, f"{i}.png") for i in range(2, 10)]
+        for file in files:
+            with Image.open(file) as img:
+                img = resize_to_fit(img, WIDTH, HEIGHT)
+                background_images.append(ImageTk.PhotoImage(img))
+                root.update_idletasks()
+                root.update()
+    except Exception as e:
+        showerror("Error", f"Error loading background images: {e}")
 
-# Helper to display the image on the canvas
-def display_on_canvas(image):
-    global display_image
-    canvas.delete("all")
-    resized_image = image.copy()
+
+
+# Resize background image to fit the canvas while maintaining aspect ratio
+def resize_to_fit(image, target_width, target_height):
+    img_width, img_height = image.size
+    img_aspect = img_width / img_height
+    target_aspect = target_width / target_height
+
+    if img_aspect > target_aspect:
+        new_width = target_width
+        new_height = int(target_width / img_aspect)
+    else:
+        new_height = target_height
+        new_width = int(target_height * img_aspect)
+
+
+    resized_image = image.resize((int(new_width * 0.9), int(new_height * 0.9)))
+    resized_image = resized_image.rotate(90, expand=True)
+    return resized_image
+
+
+# Display background on canvas
+def display_background():
+    global current_background_index, background_images
+    if not background_images:
+        load_background_images()
+
+    canvas.delete("background")
+    bg_image = background_images[current_background_index]
+    x_offset = (WIDTH - bg_image.width()) // 2
+    y_offset = (HEIGHT - bg_image.height()) // 2
+    background_id = canvas.create_image(x_offset, y_offset, anchor="nw", image=bg_image, tags="background")
+    canvas.tag_lower(background_id)
+    root.update_idletasks()
+    root.update()
+
+
+
+# Cycle background images only if the click is not on an image
+def cycle_background(event=None):
+    print("working")
+    item = canvas.find_withtag("current")
+    if "image_item" in canvas.gettags(item):
+        return  # Don't change the background if clicking on an image
+    global current_background_index
+    if not background_images:
+        return
+    current_background_index = (current_background_index + 1) % len(background_images)
+    display_background()
+
+
+# Open images with threading
+def open_images():
+    threading.Thread(target=_open_images_worker).start()
+
+
+def _open_images_worker():
+    global current_images, current_filters, image_widgets, filtered_cache
+    try:
+        file_paths = filedialog.askopenfilenames(
+            title="Select Up to 4 Images",
+            filetypes=[
+                ("JPG Files", "*.jpg"),
+                ("JPEG Files", "*.jpeg"),
+                ("PNG Files", "*.png"),
+            ]
+        )
+        if len(file_paths) > MAX_IMAGES:
+            showerror("Error", f"Please select up to {MAX_IMAGES} images.")
+            return
+
+        current_images.clear()
+        image_widgets.clear()
+        filtered_cache.clear()
+
+        for i, file_path in enumerate(file_paths):
+            img = Image.open(file_path).convert("RGB")
+            img.thumbnail((300, 300), Image.LANCZOS)
+            current_images.append(img)
+            filtered_cache[i] = {"None": img}
+
+            img_display, x, y = display_image_on_canvas(img, *image_positions[i])
+            image_widget = canvas.create_image(x, y, anchor="nw", image=img_display, tags="image_item")
+            image_widgets.append((image_widget, img_display))
+    except Exception as e:
+        showerror("Error", f"Error opening images: {e}")
+
+
+
+# Helper function to display image
+def display_image_on_canvas(image, x, y):
     aspect_ratio = image.width / image.height
-    new_height = HEIGHT
-    new_width = int(HEIGHT * aspect_ratio)
-    if new_width > WIDTH:
-        new_width = WIDTH
-        new_height = int(WIDTH / aspect_ratio)
-    resized_image = resized_image.resize((new_width, new_height), Image.LANCZOS)
-    display_image = ImageTk.PhotoImage(resized_image)
-    canvas.create_image(WIDTH // 2, HEIGHT // 2, anchor="center", image=display_image)
+    new_height = 236
+    new_width = int(new_height * aspect_ratio)
+    resized_image = image.resize((new_width, new_height))
+    resized_image = ImageOps.expand(resized_image, border=2, fill="white")
 
-# Open image
-def open_image():
-    global current_image
-    file_path = filedialog.askopenfilename(
-        title="Open Image File",
-        filetypes=[
-            ("All Image Files", "*.jpg;*.jpeg;*.png;*.gif;*.bmp"),  # Group of all supported formats
-            ("JPEG Files", "*.jpg;*.jpeg"),  
-            ("JPEG Files", "*.jpeg"),                        # Explicitly list JPEG
-            ("PNG Files", "*.png"),                                # Explicitly list PNG
-            ("GIF Files", "*.gif"),                                # Explicitly list GIF
-            ("Bitmap Files", "*.bmp"),                             # Explicitly list BMP
-            ("All Files", "*.*")                                  # Allow all file types
-        ]
-    )
-    if file_path:
-        try:
-            current_image = Image.open(file_path)
-            display_on_canvas(current_image)
-        except Exception as e:
-            showerror("Error", f"Error opening image: {e}")
+    root.update_idletasks()
+    root.update()
+    return ImageTk.PhotoImage(resized_image), x, y
 
-# Apply filter
-def apply_filter(filter_name):
-    global current_image
-    if not current_image:
-        showerror("Error", "No image loaded!")
-        return
-    try:
-        filtered_image = current_image.copy()
-        if filter_name == "Black and White":
-            filtered_image = ImageOps.grayscale(filtered_image)
-        elif filter_name == "Blur":
-            filtered_image = filtered_image.filter(ImageFilter.BLUR)
-        elif filter_name == "Sharpen":
-            filtered_image = filtered_image.filter(ImageFilter.SHARPEN)
-        elif filter_name == "Smooth":
-            filtered_image = filtered_image.filter(ImageFilter.SMOOTH)
-        elif filter_name == "Emboss":
-            filtered_image = filtered_image.filter(ImageFilter.EMBOSS)
-        elif filter_name == "Detail":
-            filtered_image = filtered_image.filter(ImageFilter.DETAIL)
-        elif filter_name == "Edge Enhance":
-            filtered_image = filtered_image.filter(ImageFilter.EDGE_ENHANCE)
-        elif filter_name == "Contour":
-            filtered_image = filtered_image.filter(ImageFilter.CONTOUR)
-        display_on_canvas(filtered_image)
-    except Exception as e:
-        showerror("Error", f"Error applying filter: {e}")
 
-filter_combobox.bind("<<ComboboxSelected>>", lambda event: apply_filter(filter_combobox.get()))
+# Load backgrounds and display the first one
+# load_background_images()
+display_background()
 
-# Save image
-def save_image():
-    global current_image
-    if not current_image:
-        showerror("Error", "No image to save!")
-        return
-    try:
-        save_path = filedialog.asksaveasfilename(defaultextension=".jpg", filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png")])
-        if save_path:
-            if askyesno(title='Save Image', message='Do you want to save this image?'):
-                current_image.save(save_path)
-    except Exception as e:
-        showerror("Error", f"Error saving image: {e}")
+canvas.bind("<Button-1>", cycle_background)
 
-# Buttons for operations
-image_button = ttk.Button(left_frame, image=image_icon, bootstyle="light", command=open_image)
-image_button.pack(pady=5)
-
-color_button = ttk.Button(left_frame, image=color_icon, bootstyle="light")
-color_button.pack(pady=5)
-
-save_button = ttk.Button(left_frame, image=save_icon, bootstyle="light", command=save_image)
-save_button.pack(pady=5)
+# Buttons
+open_button = ttk.Button(left_frame, text="Open Images", bootstyle="primary", command=open_images)
+open_button.pack(pady=5)
 
 root.mainloop()
