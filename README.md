@@ -7,3 +7,19 @@
 6. Open Terminal
 7. Type "cd ~/Downloads/photobooth-main/"
 8. Type "python photobooth_editor_new.py"
+
+### Notes
+
+If python is not installed on your system, you will have to install it first:
+
+First check if brew is installed: `brew --version`
+
+If Homebrew is not installed:
+```
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+If Homebrew is already installed:
+```
+brew install python
+```
