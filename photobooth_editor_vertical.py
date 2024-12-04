@@ -21,6 +21,8 @@ MAX_IMAGES = 4
 # Globals
 current_images = []  # List to store selected images
 image_positions = [(177, 256), (177 + 354 + 6, 256), (177, 256 + 236 + 7), (177 + 354 + 6, 256 + 236 + 7)]
+image_positions = [(260, 177), (260 + 240 + 7 , 177), (260, 177 + 360), (260 + 240 + 7, 177 + 360)]
+
 image_widgets = []  # List to store canvas image objects
 filtered_cache = {}  # Cache for filtered images
 background_images = []  # Pre-loaded background images
@@ -69,7 +71,7 @@ def resize_to_fit(image, target_width, target_height):
 
 
     resized_image = image.resize((int(new_width * 0.9), int(new_height * 0.9)))
-    resized_image = resized_image.rotate(90, expand=True)
+    # resized_image = resized_image.rotate(90, expand=True)
     return resized_image
 
 
@@ -139,15 +141,20 @@ def _open_images_worker():
     except Exception as e:
         showerror("Error", f"Error opening images: {e}")
 
-
+display_height = 236 # 354
+rotate = True
 
 # Helper function to display image
 def display_image_on_canvas(image, x, y):
     aspect_ratio = image.width / image.height
-    new_height = 236
+    new_height = display_height
     new_width = int(new_height * aspect_ratio)
     resized_image = image.resize((new_width, new_height))
     resized_image = ImageOps.expand(resized_image, border=2, fill="white")
+    
+    if rotate:
+        resized_image = resized_image.rotate(90, expand=True)
+
 
     root.update_idletasks()
     root.update()
@@ -191,10 +198,13 @@ def save_canvas():
 
             # Resize the original image to match the displayed size
             aspect_ratio = current_images[idx].width / current_images[idx].height
-            new_height = 236  # Match the height used in display
+            new_height = display_height
             new_width = int(new_height * aspect_ratio)
             resized_image = current_images[idx].resize((new_width, new_height), Image.LANCZOS)
             resized_image = ImageOps.expand(resized_image, border=2, fill="white") # toggle
+
+            if rotate:
+                resized_image = resized_image.rotate(90, expand=True) # Toggle
 
 
             # Paste the resized image onto the canvas
@@ -222,6 +232,5 @@ open_button.pack(pady=5)
 
 save_button = ttk.Button(left_frame, text="Save Image", bootstyle="success", command=save_canvas)
 save_button.pack(pady=5)
-
 
 root.mainloop()
