@@ -1,7 +1,7 @@
 import ttkbootstrap as ttk
 from tkinter import filedialog
 from tkinter.messagebox import showerror
-from PIL import Image, ImageOps, ImageTk, ImageFilter
+from PIL import Image, ImageOps, ImageTk, ImageFilter, ImageDraw
 import os
 import threading
 
@@ -154,6 +154,63 @@ def display_image_on_canvas(image, x, y):
     return ImageTk.PhotoImage(resized_image), x, y
 
 
+def save_canvas():
+    try:
+        # Ask user for save location and filename
+        file_path = filedialog.asksaveasfilename(
+            title="Save Image",
+            defaultextension=".png",
+            filetypes=[("PNG Files", "*.png"), ("JPEG Files", "*.jpeg"), ("All Files", "*.*")]
+        )
+        if not file_path:
+            return  # User canceled save dialog
+
+        # Create a blank image with the size of the canvas
+        canvas_image = Image.new("RGB", (WIDTH, HEIGHT), "white")
+
+        # Draw background if available
+        if background_images:
+            bg_image = background_images[current_background_index]
+            bg_pillow = Image.open(f"{BACKGROUND_DIR}/{current_background_index + 2}.png")
+            bg_resized = resize_to_fit(bg_pillow, WIDTH, HEIGHT)
+
+            # Calculate offsets for centering the background
+            bg_width, bg_height = bg_resized.size
+            x_offset = (WIDTH - bg_width) // 2
+            y_offset = (HEIGHT - bg_height) // 2
+
+            # Paste the resized background
+            canvas_image.paste(bg_resized, (x_offset, y_offset))
+
+            # Crop region for final output
+            crop_region = (x_offset, y_offset, x_offset + bg_width, y_offset + bg_height)
+
+        # Draw each resized image onto the canvas
+        for idx, (img_widget, img_display) in enumerate(image_widgets):
+            img_x, img_y = image_positions[idx]
+
+            # Resize the original image to match the displayed size
+            aspect_ratio = current_images[idx].width / current_images[idx].height
+            new_height = 236  # Match the height used in display
+            new_width = int(new_height * aspect_ratio)
+            resized_image = current_images[idx].resize((new_width, new_height), Image.LANCZOS)
+            resized_image = ImageOps.expand(resized_image, border=2, fill="white") # toggle
+
+
+            # Paste the resized image onto the canvas
+            canvas_image.paste(resized_image, (img_x, img_y))
+
+        # Crop the final image to the background region
+        cropped_image = canvas_image.crop(crop_region)
+
+        # Save the cropped image
+        cropped_image.save(file_path)
+        print(f"Image saved to {file_path}")
+    except Exception as e:
+        showerror("Error", f"Error saving image: {e}")
+
+
+
 # Load backgrounds and display the first one
 # load_background_images()
 display_background()
@@ -163,5 +220,9 @@ canvas.bind("<Button-1>", cycle_background)
 # Buttons
 open_button = ttk.Button(left_frame, text="Open Images", bootstyle="primary", command=open_images)
 open_button.pack(pady=5)
+
+save_button = ttk.Button(left_frame, text="Save Image", bootstyle="success", command=save_canvas)
+save_button.pack(pady=5)
+
 
 root.mainloop()
