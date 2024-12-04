@@ -44,7 +44,7 @@ canvas.update_idletasks()
 def load_background_images():
     global background_images, BACKGROUND_DIR
     try:
-        files = [os.path.join(BACKGROUND_DIR, f"{i}.png") for i in range(2, 10)]
+        files = [os.path.join(BACKGROUND_DIR, f"{i}.png") for i in range(1, 14)]
         for file in files:
             with Image.open(file) as img:
                 img = resize_to_fit(img, WIDTH, HEIGHT)
