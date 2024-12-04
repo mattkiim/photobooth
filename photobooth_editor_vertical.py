@@ -20,8 +20,8 @@ MAX_IMAGES = 4
 
 # Globals
 current_images = []  # List to store selected images
-image_positions = [(177, 256), (177 + 354 + 6, 256), (177, 256 + 236 + 7), (177 + 354 + 6, 256 + 236 + 7)]
-image_positions = [(260, 177), (260 + 240 + 7 , 177), (260, 177 + 360), (260 + 240 + 7, 177 + 360)]
+# image_positions = [(176, 256), (177 + 354 + 6, 256), (177, 256 + 236 + 7), (177 + 354 + 6, 256 + 236 + 7)]
+image_positions = [(264, 176), (264 + 240 + 3 , 176), (264, 176 + 360 + 2), (264 + 240 + 3, 176 + 360 + 2)]
 
 image_widgets = []  # List to store canvas image objects
 filtered_cache = {}  # Cache for filtered images
@@ -147,10 +147,10 @@ rotate = True
 # Helper function to display image
 def display_image_on_canvas(image, x, y):
     aspect_ratio = image.width / image.height
-    new_height = display_height
+    new_height = display_height + 1
     new_width = int(new_height * aspect_ratio)
     resized_image = image.resize((new_width, new_height))
-    resized_image = ImageOps.expand(resized_image, border=2, fill="white")
+    # resized_image = ImageOps.expand(resized_image, border=2, fill="white")
     
     if rotate:
         resized_image = resized_image.rotate(90, expand=True)
@@ -201,7 +201,7 @@ def save_canvas():
             new_height = display_height
             new_width = int(new_height * aspect_ratio)
             resized_image = current_images[idx].resize((new_width, new_height), Image.LANCZOS)
-            resized_image = ImageOps.expand(resized_image, border=2, fill="white") # toggle
+            # resized_image = ImageOps.expand(resized_image, border=2, fill="white") # toggle
 
             if rotate:
                 resized_image = resized_image.rotate(90, expand=True) # Toggle
