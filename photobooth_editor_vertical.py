@@ -178,7 +178,7 @@ def save_canvas():
         # Draw background if available
         if background_images:
             bg_image = background_images[current_background_index]
-            bg_pillow = Image.open(f"{BACKGROUND_DIR}/{current_background_index + 2}.png")
+            bg_pillow = Image.open(f"{BACKGROUND_DIR}/{current_background_index + 1}.png")
             bg_resized = resize_to_fit(bg_pillow, WIDTH, HEIGHT)
 
             # Calculate offsets for centering the background
