@@ -478,7 +478,7 @@ class PhotoboothApp:
             self.background_images.clear()
             self.background_thumbs.clear()
 
-            for i in range(7, 16):
+            for i in range(1, 7):
                 path = BACKGROUND_DIR / f"{i}.png"
                 if not path.exists():
                     continue
@@ -914,19 +914,24 @@ class PhotoboothApp:
             fname = f"photo_strip_{time.strftime('%Y%m%d_%H%M%S')}.png"
             file_path = GOOGLE_DRIVE_FOLDER / fname
 
-            canvas_image = Image.new("RGB", (WIDTH, HEIGHT), "white")
+            canvas_image = Image.new("RGBA", (WIDTH, HEIGHT), (255, 255, 255, 255))
 
             crop_region = (0, 0, WIDTH, HEIGHT)
+            bg_resized = None
+            x_offset = y_offset = 0
+
             if self.background_images:
-                idx = self.current_background_index + 2  # file index (2.png, etc.)
+                idx = self.current_background_index + 1
                 bg_path = BACKGROUND_DIR / f"{idx}.png"
+
                 if bg_path.exists():
-                    bg_pillow = Image.open(bg_path).convert("RGB")
+                    bg_pillow = Image.open(bg_path).convert("RGBA")
                     bg_resized = resize_to_fit(bg_pillow, WIDTH, HEIGHT)
                     bg_width, bg_height = bg_resized.size
                     x_offset = (WIDTH - bg_width) // 2
                     y_offset = (HEIGHT - bg_height) // 2
-                    canvas_image.paste(bg_resized, (x_offset, y_offset))
+
+                    # Crop to the frame bounds
                     crop_region = (
                         x_offset,
                         y_offset,
@@ -934,22 +939,45 @@ class PhotoboothApp:
                         y_offset + bg_height,
                     )
 
+            # --- 1) Paste PHOTOS first (behind the frame) ---
+            # Use save positions if you defined them; otherwise fall back.
+            positions = getattr(self, "image_positions_save", None)
+            if positions is None:
+                # fallback: use whatever positions you're using for display
+                positions = getattr(self, "image_positions_display", None)
+            if positions is None:
+                positions = getattr(self, "image_positions", [])
+
             for idx, img in enumerate(self.current_images):
                 if img is None:
                     continue
-                if idx >= len(self.image_positions_save):
+                if idx >= len(positions):
                     break
 
-                img_x, img_y = self.image_positions_save[idx]
+                img_x, img_y = positions[idx]
 
+                # Keep aspect / size like before
                 aspect = img.width / img.height
                 new_height = SLOT_H
                 new_width = int(new_height * aspect)
-                resized = img.resize((new_width, new_height), Image.LANCZOS)
-                resized = ImageOps.expand(resized, border=2, fill="white")
-                canvas_image.paste(resized, (img_x, img_y))
 
+                # Convert to RGBA so alpha compositing works if needed
+                resized = img.resize((new_width, new_height), Image.LANCZOS).convert("RGBA")
+                # Optional white border
+                resized = ImageOps.expand(resized, border=2, fill="white")
+
+                # Paste photo onto base canvas (no mask needed; it's opaque)
+                canvas_image.paste(resized, (img_x, img_y), resized)
+
+            # --- 2) Paste FRAME / BACKGROUND on TOP using alpha mask ---
+            if bg_resized is not None:
+                # Paste with its own alpha as mask -> frame on top, photos visible through holes
+                canvas_image.paste(bg_resized, (x_offset, y_offset), bg_resized)
+
+            # Crop to the frame area
             cropped = canvas_image.crop(crop_region)
+
+            # PNG supports RGBA, so we can save directly
             cropped.save(file_path)
 
             self.status_var.set(f"Image saved to {file_path}. Ready for new photos.")
@@ -960,6 +988,7 @@ class PhotoboothApp:
         except Exception as e:
             showerror("Error", f"Error saving image: {e}")
             self.status_var.set("Error saving image")
+
 
     # ---------------------- BUTTON STATE ------------------------------
     def _update_buttons(self):
