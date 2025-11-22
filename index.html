@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Photobooth Web</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      display: flex;
+      height: 100vh;
+      background: #f5f5f5;
+    }
+
+    .sidebar {
+      width: 260px;
+      background: #1f2933;
+      color: white;
+      padding: 16px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sidebar h1 {
+      font-size: 18px;
+      margin: 0 0 8px;
+    }
+
+    .preview-box {
+      background: #111827;
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    video {
+      width: 100%;
+      border-radius: 6px;
+      background: black;
+      transform: scaleX(-1); 
+    }
+
+    button {
+      border: none;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+    }
+    .btn-success {
+      background: #10b981;
+      color: white;
+    }
+    .btn-secondary {
+      background: #4b5563;
+      color: white;
+    }
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+
+    .btn-block {
+      width: 100%;
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      box-sizing: border-box;
+      gap: 8px;
+    }
+
+    #stripCanvas {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+      max-width: 100%;
+      max-height: calc(100% - 150px);
+      align-self: center;
+    }
+
+    .bg-bar {
+      height: 160px;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      padding: 8px;
+      box-sizing: border-box;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+    }
+
+    .bg-thumb {
+      width: 100px;
+      height: 140px;
+      object-fit: cover;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      flex-shrink: 0;
+    }
+
+    .bg-thumb.selected {
+      border-color: #2563eb;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h1>Photobooth</h1>
+
+    <div class="preview-box">
+      <video id="video" autoplay playsinline></video>
+      <button id="startBtn" class="btn-primary btn-block">Start Camera</button>
+      <button id="captureBtn" class="btn-success btn-block">Capture Photo</button>
+      <div class="hint">Tap a photo area on the strip to select it, then capture to overwrite. Tap the ✕ to clear a photo.</div>
+    </div>
+
+    <button id="clearBtn" class="btn-secondary btn-block">Clear Photos</button>
+    <button id="saveBtn" class="btn-success btn-block">Save Strip</button>
+    <button id="printBtn" class="btn-primary btn-block">Print Strip</button>
+  </div>
+
+  <div class="main">
+    <canvas id="stripCanvas" width="1000" height="1000"></canvas>
+
+    <div class="bg-bar" id="bgBar">
+      <!-- Update these src paths to match your real backgrounds -->
+      <img src="frame_designs/1.png" class="bg-thumb selected" data-index="0" alt="Background 1" />
+      <img src="frame_designs/2.png" class="bg-thumb" data-index="1" alt="Background 2" />
+      <img src="frame_designs/3.png" class="bg-thumb" data-index="2" alt="Background 3" />
+    </div>
+  </div>
+
+  <script>
+    // CONFIG (mirrors your Python constants)
+    const WIDTH = 1000;
+    const HEIGHT = 1000;
+    const MAX_IMAGES = 4;
+    const SLOT_W = 354;
+    const SLOT_H = 236;
+
+    // Positions of four slots (same as Python)
+    const imagePositions = [
+      { x: 177, y: 256 },
+      { x: 177 + 354 + 6, y: 256 },
+      { x: 177, y: 256 + 236 + 7 },
+      { x: 177 + 354 + 6, y: 256 + 236 + 7 },
+    ];
+
+    // State
+    let currentImages = new Array(MAX_IMAGES).fill(null); // dataURLs
+    let selectedSlot = null;
+    let currentBackgroundIndex = 0;
+    let backgroundImages = [];
+    let videoStream = null;
+
+    // DOM
+    const video = document.getElementById("video");
+    const startBtn = document.getElementById("startBtn");
+    const captureBtn = document.getElementById("captureBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const saveBtn = document.getElementById("saveBtn");
+    const printBtn = document.getElementById("printBtn");
+    const stripCanvas = document.getElementById("stripCanvas");
+    const stripCtx = stripCanvas.getContext("2d");
+    const bgBar = document.getElementById("bgBar");
+
+    // ---------- BACKGROUNDS ----------
+    function loadBackgrounds() {
+      const thumbs = bgBar.querySelectorAll(".bg-thumb");
+      backgroundImages = [];
+      thumbs.forEach((thumb, idx) => {
+        const img = new Image();
+        img.src = thumb.src;
+        backgroundImages.push(img);
+        img.onload = () => renderStrip();
+        thumb.addEventListener("click", () => {
+          currentBackgroundIndex = idx;
+          thumbs.forEach(t => t.classList.remove("selected"));
+          thumb.classList.add("selected");
+          renderStrip();
+        });
+      });
+    }
+
+    // ---------- CAMERA ----------
+    async function startCamera() {
+      if (videoStream) return;
+      try {
+        videoStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false
+        });
+        video.srcObject = videoStream;
+      } catch (e) {
+        alert("Could not access camera: " + e.message);
+      }
+    }
+
+    function capturePhoto() {
+      if (!videoStream) {
+        alert("Camera not started.");
+        return;
+      }
+
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (!vw || !vh) {
+        alert("Waiting for camera to initialize. Try again in a second.");
+        return;
+      }
+
+      // Offscreen canvas with the full video resolution
+      const tempCanvas = document.createElement("canvas");
+      const tempCtx = tempCanvas.getContext("2d");
+      tempCanvas.width = vw;
+      tempCanvas.height = vh;
+
+      // Mirror horizontally like cv2.flip(frame, 1)
+      tempCtx.save();
+      tempCtx.translate(vw, 0);
+      tempCtx.scale(-1, 1);
+      tempCtx.drawImage(video, 0, 0, vw, vh);
+      tempCtx.restore();
+
+      // Crop to slot aspect ratio (same logic as Python)
+      const slotRatio = SLOT_W / SLOT_H;
+      const previewRatio = vw / vh;
+      let sx, sy, sw, sh;
+
+      if (previewRatio > slotRatio) {
+        // preview is wider than slot -> crop width
+        sw = vh * slotRatio;
+        sh = vh;
+        sx = (vw - sw) / 2;
+        sy = 0;
+      } else {
+        // preview is taller than slot -> crop height
+        sw = vw;
+        sh = vw / slotRatio;
+        sx = 0;
+        sy = (vh - sh) / 2;
+      }
+
+      const croppedCanvas = document.createElement("canvas");
+      const croppedCtx = croppedCanvas.getContext("2d");
+      croppedCanvas.width = SLOT_W;
+      croppedCanvas.height = SLOT_H;
+      croppedCtx.drawImage(tempCanvas, sx, sy, sw, sh, 0, 0, SLOT_W, SLOT_H);
+
+      const dataURL = croppedCanvas.toDataURL("image/png");
+
+      // choose slot: selected or first empty
+      let slotIdx = selectedSlot;
+      if (slotIdx === null) {
+        slotIdx = currentImages.findIndex(img => img === null);
+      }
+      if (slotIdx === -1) {
+        alert(
+          `All ${MAX_IMAGES} photo slots are full.\n` +
+          `Click the ✕ on a photo or tap a photo to select it, then capture to overwrite.`
+        );
+        return;
+      }
+
+      currentImages[slotIdx] = dataURL;
+      renderStrip();
+    }
+
+    function clearPhotos() {
+      currentImages = new Array(MAX_IMAGES).fill(null);
+      selectedSlot = null;
+      renderStrip();
+    }
+
+    // ---------- DRAW STRIP ----------
+    function renderStrip() {
+      // white background
+      stripCtx.fillStyle = "white";
+      stripCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      // draw background rotated 90°, resized like Python
+      const bg = backgroundImages[currentBackgroundIndex];
+      if (bg && bg.complete && bg.naturalWidth > 0) {
+        const imgWidth = bg.width;
+        const imgHeight = bg.height;
+        const imgAspect = imgWidth / imgHeight;
+        const targetAspect = WIDTH / HEIGHT;
+
+        let newW, newH;
+        if (imgAspect > targetAspect) {
+          newW = WIDTH;
+          newH = WIDTH / imgAspect;
+        } else {
+          newH = HEIGHT;
+          newW = HEIGHT * imgAspect;
+        }
+
+        // match Python's 0.9 scaling
+        newW *= 0.9;
+        newH *= 0.9;
+
+        stripCtx.save();
+        // rotate around center of canvas, like resize_to_fit(..).rotate(90)
+        stripCtx.translate(WIDTH / 2, HEIGHT / 2);
+        stripCtx.rotate(270 * Math.PI / 180);
+        stripCtx.drawImage(bg, -newW / 2, -newH / 2, newW, newH);
+        stripCtx.restore();
+      }
+
+      // draw photos
+      for (let idx = 0; idx < MAX_IMAGES; idx++) {
+        const dataURL = currentImages[idx];
+        if (!dataURL) continue;
+
+        const pos = imagePositions[idx];
+        const x = pos.x - 2;
+        const y = pos.y;
+
+        const img = new Image();
+        img.src = dataURL;
+
+        img.onload = () => {
+          const BORDER = 2;
+          stripCtx.fillStyle = "white";
+          stripCtx.fillRect(
+            x - BORDER,
+            y - BORDER,
+            SLOT_W + 2 * BORDER,
+            SLOT_H + 2 * BORDER
+          );
+          stripCtx.drawImage(img, x, y, SLOT_W, SLOT_H);
+
+          // X in top-right corner
+          const xBtn = x + SLOT_W + BORDER - 12;
+          const yBtn = y + 14;
+          stripCtx.fillStyle = "rgba(0,0,0,0.7)";
+          stripCtx.font = "16px sans-serif";
+          stripCtx.fillText("✕", xBtn, yBtn);
+        };
+      }
+
+      // selection highlight
+      if (selectedSlot !== null && currentImages[selectedSlot] !== null) {
+        const pos = imagePositions[selectedSlot];
+        const x = pos.x - 2;
+        const y = pos.y;
+        stripCtx.strokeStyle = "dodgerblue";
+        stripCtx.lineWidth = 4;
+        stripCtx.strokeRect(
+          x - 4,
+          y - 4,
+          SLOT_W + 8,
+          SLOT_H + 8
+        );
+      }
+    }
+
+    // handle clicks on canvas for selection / delete
+    stripCanvas.addEventListener("click", (e) => {
+      const rect = stripCanvas.getBoundingClientRect();
+      const scaleX = WIDTH / rect.width;
+      const scaleY = HEIGHT / rect.height;
+      const cx = (e.clientX - rect.left) * scaleX;
+      const cy = (e.clientY - rect.top) * scaleY;
+
+      let clickedSlot = null;
+      for (let idx = 0; idx < MAX_IMAGES; idx++) {
+        const pos = imagePositions[idx];
+        const x = pos.x - 2;
+        const y = pos.y;
+        if (
+          cx >= x && cx <= x + SLOT_W &&
+          cy >= y && cy <= y + SLOT_H
+        ) {
+          clickedSlot = idx;
+          break;
+        }
+      }
+
+      if (clickedSlot === null) return;
+      if (!currentImages[clickedSlot]) return;
+
+      // detect click near X
+      const pos = imagePositions[clickedSlot];
+      const x = pos.x - 2;
+      const y = pos.y;
+      const BORDER = 2;
+      const xBtn = x + SLOT_W + BORDER - 12;
+      const yBtn = y + 14;
+
+      const dx = cx - xBtn;
+      const dy = cy - yBtn;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < 15) {
+        currentImages[clickedSlot] = null;
+        if (selectedSlot === clickedSlot) selectedSlot = null;
+      } else {
+        selectedSlot = (selectedSlot === clickedSlot) ? null : clickedSlot;
+      }
+      renderStrip();
+    });
+
+    // ---------- SAVE & PRINT ----------
+    function saveStrip() {
+      const link = document.createElement("a");
+      link.download = `photo_strip_${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+      link.href = stripCanvas.toDataURL("image/png");
+      link.click();
+    }
+
+    function printStrip() {
+      const dataURL = stripCanvas.toDataURL("image/png");
+      const w = window.open("");
+      w.document.write("<img id='img' src='" + dataURL + "' style='width:100%;'/>");
+      w.document.close();
+      w.focus();
+      w.onload = () => w.print();
+    }
+
+    // ---------- EVENT HOOKUP ----------
+    startBtn.addEventListener("click", startCamera);
+    captureBtn.addEventListener("click", capturePhoto);
+    clearBtn.addEventListener("click", clearPhotos);
+    saveBtn.addEventListener("click", saveStrip);
+    printBtn.addEventListener("click", printStrip);
+
+    // init
+    loadBackgrounds();
+    renderStrip();
+  </script>
+</body>
+</html>
